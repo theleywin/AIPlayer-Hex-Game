@@ -14,11 +14,17 @@ class Player:
 
 # Implementación usando MCTS (la tranca)
 class PabloPlayer(Player):
-    def __init__(self, player_id: int, mcts_iterations: int = 4000):
+    def __init__(self, player_id: int, mcts_iterations: int = 3000):
         super().__init__(player_id)
         self.mcts_iterations = mcts_iterations
 
     def play(self, board: HexBoard) -> tuple:
+        
+        for move in board.get_possible_moves():
+            board_copy = board.clone()
+            board_copy.place_piece(move[0], move[1], self.player_id)
+            if board_copy.check_connection(self.player_id):
+                return move
         root = MCTSNode(board.clone(), player_id=self.player_id)
         best_move = mcts(root, self.mcts_iterations, self.player_id)
         return best_move
