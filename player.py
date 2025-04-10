@@ -14,7 +14,7 @@ class Player:
 
 # Implementación usando MCTS (la tranca)
 class PabloPlayer(Player):
-    def __init__(self, player_id: int, mcts_iterations: int = 3000):
+    def __init__(self, player_id: int, mcts_iterations: int = 5000):
         super().__init__(player_id)
         self.mcts_iterations = mcts_iterations
 
@@ -26,6 +26,9 @@ class PabloPlayer(Player):
             if board_copy.check_connection(self.player_id):
                 return move
         root = MCTSNode(board.clone(), player_id=self.player_id)
+        if board.size >=10: 
+             best_move = mcts(root, 2500, self.player_id)
+             return best_move
         best_move = mcts(root, self.mcts_iterations, self.player_id)
         return best_move
     
