@@ -95,7 +95,7 @@ def simulate_random_playout(board: HexBoard, current_player: int):
 
 
 # Función principal de MCTS
-def mcts(root: MCTSNode, iterations: int, simulation_player: int, time_limit: float = 8.95):
+def mcts(root: MCTSNode, iterations: int, simulation_player: int, time_limit: float = 7.0):
     start_time = time.time()
 
     for _ in range(iterations):
