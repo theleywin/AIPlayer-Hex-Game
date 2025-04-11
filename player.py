@@ -1,7 +1,7 @@
 import random
 import math
 from hex_board import HexBoard
-
+import time
 
 
 class Player:
@@ -12,25 +12,22 @@ class Player:
         raise NotImplementedError("¡Implementa este método!")
     
 
-# Implementación usando MCTS (la tranca)
-class PabloPlayer(Player):
-    def __init__(self, player_id: int, mcts_iterations: int = 5000):
+# Implementación usando MCTS con RAVE(la tranca)
+class RavePlayer(Player):
+    def __init__(self, player_id: int, mcts_iterations: int = 6000):
         super().__init__(player_id)
         self.mcts_iterations = mcts_iterations
 
     def play(self, board: HexBoard) -> tuple:
         
-        for move in board.get_possible_moves():
+         for move in board.get_possible_moves():
             board_copy = board.clone()
             board_copy.place_piece(move[0], move[1], self.player_id)
             if board_copy.check_connection(self.player_id):
                 return move
-        root = MCTSNode(board.clone(), player_id=self.player_id)
-        if board.size >=10: 
-             best_move = mcts(root, 2500, self.player_id)
-             return best_move
-        best_move = mcts(root, self.mcts_iterations, self.player_id)
-        return best_move
+         root = MCTSNode(board.clone(), player_id=self.player_id)
+         best_move = mcts(root, self.mcts_iterations, self.player_id)
+         return best_move
     
 
 class MCTSNode:
@@ -42,36 +39,70 @@ class MCTSNode:
         self.visits = 0                 # Número de visitas
         self.wins = 0                   # Número de simulaciones ganadas desde este nodo
         self.player_id = player_id      # Jugador que realizó el movimiento(1 o 2)
+        self.rave_visits = {}           # move -> # de veces que apareció en un playout
+        self.rave_wins = {}             # lo mismo pero las veces que ese move estuvo en un playout ganador
 
     def is_fully_expanded(self):
         return len(self.children) == len(self.board.get_possible_moves())
 
-    def best_child(self, c_param=1.4):
-        # Fórmula UCT
-        choices_weights = [
-            (child.wins / child.visits) + c_param * math.sqrt(math.log(self.visits) / child.visits)
-            for child in self.children
-        ]
-        return self.children[choices_weights.index(max(choices_weights))]
+    # Ahora implementando Rapid Value Function xd
+    def best_child(self, c_param=1.4, rave_const=314):
+        best_score = -float('inf')
+        best_child = None
+
+        for child in self.children:
+            exploitation = child.wins / child.visits
+            exploration = c_param * math.sqrt(math.log(self.visits) / child.visits)
+
+            move = child.move
+            rave_visits = self.rave_visits.get(move, 0)
+            rave_wins = self.rave_wins.get(move, 0)
+
+            if rave_visits > 0:
+                rave_value = rave_wins / rave_visits
+            else:
+                rave_value = 0
+
+            beta =math.sqrt( rave_const /(rave_const + 3* child.visits))
+            score = (1 - beta) * exploitation + beta * rave_value + exploration
+
+            if score > best_score:
+                best_score = score
+                best_child = child
+
+        return best_child
+
 
 # Función de simulación aleatoria (playout)
 def simulate_random_playout(board: HexBoard, current_player: int):
     board_copy = board.clone()
     player = current_player
+    moves_played = []
+
     while True:
         possible_moves = board_copy.get_possible_moves()
         if not possible_moves:
-            return 0  # empate, creo que esto no puede pasar pero bueno por si acaso
+            return 0, moves_played
         move = random.choice(possible_moves)
         board_copy.place_piece(move[0], move[1], player)
+        moves_played.append((move, player)) #lo necesito pal RAVE pa tener constancia de todas las jugadas del playout
         if board_copy.check_connection(player):
-            return player  # devuelvo el player que haya ganado
-        player = 3 - player  # si aun no gana nadie vamos switchendo y seguimos en el while
+            return player, moves_played
+        player = 3 - player
+
+
+
+
 
 # Función principal de MCTS
-def mcts(root: MCTSNode, iterations: int, simulation_player: int):
+def mcts(root: MCTSNode, iterations: int, simulation_player: int, time_limit: float = 8.95):
+    start_time = time.time()
+
     for _ in range(iterations):
+        if time.time() - start_time > time_limit:
+            break
         node = root
+        
         # Selección
         while node.children and node.is_fully_expanded():
             node = node.best_child()
@@ -107,14 +138,33 @@ def mcts(root: MCTSNode, iterations: int, simulation_player: int):
                 node = child_node
 
         # Simulación
-        simulation_result = simulate_random_playout(node.board, 3 - node.player_id)
+        simulation_result, moves_played = simulate_random_playout(node.board, 3 - node.player_id)
         
         # Backpropagation
+        visited_nodes = []
         while node is not None:
             node.visits += 1
-            # Si ganamos entonces cuenta como victoria y le sumamos 1 a las wins
             if simulation_result == node.player_id:
                 node.wins += 1
+
+                # updateamos los valores del RAVE 
+                for move, player in moves_played:
+                    if player == node.player_id:
+                        if move not in node.rave_visits:
+                            node.rave_visits[move] = 0
+                            node.rave_wins[move] = 0
+                        node.rave_visits[move] += 1
+                        node.rave_wins[move] += 1
+
+            else:
+                # En caso de no ganar igual me interesa guardar la info de las visitas (cambia el juego completamente)
+                for move, player in moves_played:
+                    if player == node.player_id:
+                        if move not in node.rave_visits:
+                            node.rave_visits[move] = 0
+                            node.rave_wins[move] = 0
+                        node.rave_visits[move] += 1
+            visited_nodes.append(node)
             node = node.parent
 
     
